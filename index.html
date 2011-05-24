@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <script type="text/javascript" src="term.js"></script>
+    <script type="text/javascript" src="z80.js"></script>
+    <script type="text/javascript" src="cpm.js"></script>
+    <style type="text/css">
+      div.term {
+        background-color: black;
+        color: white;
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="term" class="term"></div>
+    <div><input type="text"></div>
+    <script type="text/javascript">
+        var ua = navigator.userAgent.toLowerCase();
+        var isChrome = ua.indexOf("chrome") != -1;
+        var isSafari = !isChrome && ua.indexOf("safari") != -1;
+        if (isSafari && ua.indexOf("mobile") == -1) {
+            // Safari for Desktop doesn't support ArrayBuffer.
+            // Define pseudo Uint8Array prototype.
+            Uint8Array = function (obj) {
+                var result;
+                if (obj instanceof Array) {
+                    result = new Array(this.byteLength);
+                    result.byteLength = obj.length;
+                    for (var i = 0; i < result.byteLength; i++)
+                        result[i] = obj[i];
+                } else {
+                    result = new Array(obj);
+                    result.byteLength = obj;
+                }
+                return result;
+            };
+        }
+        function load(url) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, false);
+            xhr.responseType = "arraybuffer";
+            if (isSafari)
+                xhr.overrideMimeType('text/plain; charset=x-user-defined');
+            xhr.send("");
+            if (xhr.status != 200) return null;
+            if (isSafari) {
+                // Safari doesn't support ArrayBuffer response.
+                // Use x-user-defined charset as pseudo binary
+                // and convert it to Array.
+                var data = xhr.responseText;
+                var length = data.length;
+                var array = new Array(length);
+                for (var i = 0; i < length; i++)
+                    array[i] = data.charCodeAt(i) & 0xff;
+                return array;
+            }
+            if (xhr.response instanceof ArrayBuffer) // Chrome
+                return xhr.response;
+            if (xhr.mozResponseArrayBuffer instanceof ArrayBuffer) // Firefox
+                return xhr.mozResponseArrayBuffer;
+            return null;
+        }
+
+        var term = new Term("term", 80, 25);
+        term.pending = -1;
+        term.output = function(c) {
+            this.appendString(c);
+        };
+        term.input = function() {
+            var result = this.pending;
+            this.pending = -1;
+            return result;
+        };
+        term.ready = function() {
+            if (this.pending == -1) return false;
+            return true;
+        };
+        document.onkeypress = function (e) {
+            term.pending = e.which;
+        };
+        document.onkeydown = function (e) {
+            if (8 == e.which) {
+                // DEL Key
+                term.pending = e.which;
+                // Filter this event to avoid browser's handling.
+                // (Also eliminate onkeypress and onkeyup events.)
+                return false;
+            }
+            return true;
+        };
+        document.onkeyup = function (e) {
+            return false;
+        };
+
+        var cpm = new CPM(term, load("drive.img"));
+
+        function loop () {
+            try {
+                cpm.execute();
+            } catch (e) {
+                // Abort I/O (to wait keyboard input).
+                // Rollback to retry I/O instruction.
+                cpm._PC -= 2;
+            }
+        }
+        setInterval(loop, 17);
+    </script>
+  </body>
+</html>
