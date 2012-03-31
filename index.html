@@ -14,7 +14,7 @@
   </head>
   <body>
     <div id="term" class="term"></div>
-    <div><input type="text"></div>
+    <!--div><input type="text"></div-->
     <script type="text/javascript">
         var ua = navigator.userAgent.toLowerCase();
         var isChrome = ua.indexOf("chrome") != -1;
@@ -36,30 +36,36 @@
                 return result;
             };
         }
-        function load(url) {
+        function load(url, callback) {
             var xhr = new XMLHttpRequest();
-            xhr.open("GET", url, false);
+            xhr._callback = callback;
+            xhr.open("GET", url, true);
             xhr.responseType = "arraybuffer";
             if (isSafari)
                 xhr.overrideMimeType('text/plain; charset=x-user-defined');
-            xhr.send("");
-            if (xhr.status != 200) return null;
-            if (isSafari) {
-                // Safari doesn't support ArrayBuffer response.
-                // Use x-user-defined charset as pseudo binary
-                // and convert it to Array.
-                var data = xhr.responseText;
-                var length = data.length;
-                var array = new Array(length);
-                for (var i = 0; i < length; i++)
-                    array[i] = data.charCodeAt(i) & 0xff;
-                return array;
+            xhr.onreadystatechange = function () {
+                if ((xhr.readyState != 4) || (xhr.status != 200))
+                    return;
+                if (isSafari) {
+                    // Safari doesn't support ArrayBuffer response.
+                    // Use x-user-defined charset as pseudo binary
+                    // and convert it to Array.
+                    var data = this.responseText;
+                    var length = data.length;
+                    var array = new Array(length);
+                    for (var i = 0; i < length; i++)
+                        array[i] = data.charCodeAt(i) & 0xff;
+                    this._callback(array);
+                }
+                // Chrome
+                if (this.response instanceof ArrayBuffer)
+                    this._callback(this.response);
+                // FireFox
+                if (this.mozResponseArrayBuffer instanceof ArrayBuffer)
+                    this._callback(this.mozResponseArrayBuffer);
+                console.log("unsupported xhr response");
             }
-            if (xhr.response instanceof ArrayBuffer) // Chrome
-                return xhr.response;
-            if (xhr.mozResponseArrayBuffer instanceof ArrayBuffer) // Firefox
-                return xhr.mozResponseArrayBuffer;
-            return null;
+            xhr.send("");
         }
 
         var term = new Term("term", 80, 25);
@@ -93,8 +99,7 @@
             return false;
         };
 
-        var cpm = new CPM(term, load("drive.img"));
-
+        var cpm;
         function loop () {
             try {
                 cpm.execute();
@@ -104,7 +109,11 @@
                 cpm._PC -= 2;
             }
         }
-        setInterval(loop, 17);
+        load("drive.img", function (data) {
+            cpm = new CPM(term, data);
+            setInterval(loop, 17);
+        });
+
     </script>
   </body>
 </html>
